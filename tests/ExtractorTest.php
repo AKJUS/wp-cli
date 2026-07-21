@@ -64,8 +64,16 @@ class ExtractorTest extends TestCase {
 	}
 
 	public function test_err_rmdir(): void {
-		$this->expectException( \Exception::class );
-		Extractor::rmdir( 'no-such-dir' );
+		$caught = null;
+		try {
+			Extractor::rmdir( 'no-such-dir' );
+		} catch ( \Exception $e ) {
+			$caught = $e;
+		}
+		// Assert the type, not the message: PHP 8.6 dropped the path argument
+		// from the RecursiveDirectoryIterator::__construct() exception message.
+		$this->assertInstanceOf( \UnexpectedValueException::class, $caught );
+		$this->assertEmpty( self::$logger->stderr );
 	}
 
 	public function test_copy_overwrite_files(): void {
@@ -85,8 +93,16 @@ class ExtractorTest extends TestCase {
 	}
 
 	public function test_err_copy_overwrite_files(): void {
-		$this->expectException( \Exception::class );
-		Extractor::copy_overwrite_files( 'no-such-dir', 'dest-dir' );
+		$caught = null;
+		try {
+			Extractor::copy_overwrite_files( 'no-such-dir', 'dest-dir' );
+		} catch ( \Exception $e ) {
+			$caught = $e;
+		}
+		// Assert the type, not the message: PHP 8.6 dropped the path argument
+		// from the RecursiveDirectoryIterator::__construct() exception message.
+		$this->assertInstanceOf( \UnexpectedValueException::class, $caught );
+		$this->assertEmpty( self::$logger->stderr );
 	}
 
 	public function test_extract_tarball(): void {
