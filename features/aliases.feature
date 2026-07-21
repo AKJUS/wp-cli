@@ -91,6 +91,37 @@ Feature: Create shortcuts to specific WordPress installs
       1
       """
 
+  Scenario: CLI arguments take precedence over differing alias-defined configuration
+    Given a WP installation in 'foo'
+    And a WP installation in 'bar'
+    And a wp-cli.yml file:
+      """
+      @foo:
+        path: foo
+        user: admin
+      @bar:
+        path: bar
+      """
+
+    When I run `wp @bar option update home "https://bar.example.com"`
+    And I run `wp @foo option get home --path=bar`
+    Then STDOUT should be:
+      """
+      https://bar.example.com
+      """
+
+    When I run `wp @foo user create editor editor@example.com --role=editor --porcelain`
+    Then STDOUT should be:
+      """
+      2
+      """
+
+    When I run `wp @foo eval "echo get_current_user_id();" --user=editor`
+    Then STDOUT should be:
+      """
+      2
+      """
+
   Scenario: Support global params specific to the WordPress install, not WP-CLI generally
     Given a WP installation in 'foo'
     And a wp-cli.yml file:
@@ -733,6 +764,12 @@ Feature: Create shortcuts to specific WordPress installs
     Then STDOUT should be:
       """
       http://subsite.example.com
+      """
+
+    When I run `wp @subsite option get siteurl --url=https://example.com`
+    Then STDOUT should be:
+      """
+      https://example.com
       """
 
   # TODO: Investigate on Windows why `@bar` is missing from @foobar output.
