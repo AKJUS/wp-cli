@@ -221,6 +221,15 @@ final class PathTest extends TestCase {
 				'phar://wp-cli.phar/vendor/wp-cli/config-command/templates/wp-config.mustache',
 			],
 
+			// Windows bare path ( Phar::running( false ) ) with backslashes: the
+			// separators are normalized so the prefix still matches the stream URL.
+			'windows backslash phar path'    => [
+				'phar://C:/Users/bob/wp/vendor/wp-cli/config-command/templates/wp-config.mustache',
+				'C:\\Users\\bob\\wp',
+				$bundled,
+				'phar://wp-cli.phar/vendor/wp-cli/config-command/templates/wp-config.mustache',
+			],
+
 			// Standalone Phar layout (WP_CLI_ROOT without an internal path).
 			'standalone root'                => [
 				'phar:///home/user/.local/bin/wp/php/wp-cli.php',

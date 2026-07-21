@@ -237,6 +237,11 @@ class Path {
 			$phar_path = substr( $phar_path, strlen( self::PHAR_STREAM_PREFIX ) );
 		}
 
+		// The Phar stream URL in $path always uses forward slashes, but a bare
+		// path from Phar::running( false ) can be backslash-separated on Windows.
+		// Normalize so the search prefix matches regardless of separator style.
+		$phar_path = self::normalize( $phar_path );
+
 		// Rewrite to the Phar's stable stream alias (e.g. `wp-cli.phar`) taken
 		// from the root URL's host, rather than a bare `phar://` that would not
 		// resolve without an archive name. Without a host the Phar was loaded via
