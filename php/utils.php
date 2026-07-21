@@ -1416,7 +1416,7 @@ function report_batch_operation_results( $noun, $verb, $total, $successes, $fail
  * @return array<string>
  */
 function parse_str_to_argv( $arguments ) {
-	preg_match_all( '/(?:--[^\s=]+=(["\'])((\\{2})*|(?:[^\1]+?[^\\\\](\\{2})*))\1|--[^\s=]+=[^\s]+|--[^\s=]+|(["\'])((\\{2})*|(?:[^\5]+?[^\\\\](\\{2})*))\5|[^\s]+)/', $arguments, $matches, PREG_SET_ORDER );
+	preg_match_all( '/(?:--[^\s=]+=(["\'])((\\{2})*|[^\\\\](?:\\{2})*|(?:[^\1]+?[^\\\\](\\{2})*))\1|--[^\s=]+=[^\s]+|--[^\s=]+|(["\'])((\\{2})*|[^\\\\](?:\\{2})*|(?:[^\5]+?[^\\\\](\\{2})*))\5|[^\s]+)/', $arguments, $matches, PREG_SET_ORDER );
 	$argv = [];
 	foreach ( $matches as $match ) {
 		// Check if this is a quoted associative argument (--key="value" or --key='value').
@@ -1987,8 +1987,6 @@ function describe_callable( $callable ) {
 		}
 
 		if ( is_array( $callable ) ) {
-			/** @var array{0: object|string, 1: string} $callable */
-
 			if ( is_object( $callable[0] ) ) {
 				return sprintf(
 					'%s->%s()',
@@ -2076,7 +2074,7 @@ function get_db_type() {
 	$binary = get_mysql_binary_path();
 
 	if ( '' !== $binary ) {
-		$result = Process::create( "$binary --version", null, null )->run();
+		$result = Process::create( escapeshellarg( $binary ) . ' --version', null, null )->run();
 
 		if ( 0 === $result->return_code ) {
 			$db_type = ( false !== strpos( $result->stdout, 'MariaDB' ) ) ? 'mariadb' : 'mysql';
@@ -2103,17 +2101,23 @@ function get_mysql_binary_path() {
 		return $path;
 	}
 
-	$path    = '';
-	$mysql   = Process::create( '/usr/bin/env which mysql', null, null )->run();
-	$mariadb = Process::create( '/usr/bin/env which mariadb', null, null )->run();
+	$path = '';
 
-	$mysql_binary   = trim( $mysql->stdout );
-	$mariadb_binary = trim( $mariadb->stdout );
+	if ( is_windows() ) {
+		$mysql   = Process::create( 'where mysql', null, null )->run();
+		$mariadb = Process::create( 'where mariadb', null, null )->run();
+	} else {
+		$mysql   = Process::create( '/usr/bin/env which mysql', null, null )->run();
+		$mariadb = Process::create( '/usr/bin/env which mariadb', null, null )->run();
+	}
+
+	$mysql_binary   = trim( explode( "\n", $mysql->stdout )[0] );
+	$mariadb_binary = trim( explode( "\n", $mariadb->stdout )[0] );
 
 	if ( 0 === $mysql->return_code ) {
 		if ( '' !== $mysql_binary ) {
 			$path   = $mysql_binary;
-			$result = Process::create( "$mysql_binary --version", null, null )->run();
+			$result = Process::create( escapeshellarg( $mysql_binary ) . ' --version', null, null )->run();
 
 			// It's actually MariaDB disguised as MySQL.
 			if ( 0 === $result->return_code && false !== strpos( $result->stdout, 'MariaDB' ) && 0 === $mariadb->return_code ) {
@@ -2147,7 +2151,7 @@ function get_mysql_version() {
 	$db_type = get_db_type();
 
 	if ( 'sqlite' !== $db_type ) {
-		$result = Process::create( "/usr/bin/env $db_type --version", null, null )->run();
+		$result = Process::create( force_env_on_nix_systems( "$db_type --version" ), null, null )->run();
 
 		if ( 0 === $result->return_code ) {
 			$version = trim( $result->stdout );
@@ -2160,19 +2164,59 @@ function get_mysql_version() {
 /**
  * Returns the correct `dump` command based on the detected database type.
  *
+ * For MariaDB, prefers `mariadb-dump` (available since MariaDB 10.5) but falls
+ * back to `mysqldump` if the command is not found on the system.
+ *
  * @return string The appropriate dump command.
  */
 function get_sql_dump_command() {
-	return 'mariadb' === get_db_type() ? 'mariadb-dump' : 'mysqldump';
+	static $command = null;
+
+	if ( null !== $command ) {
+		return $command;
+	}
+
+	$command = 'mysqldump';
+
+	if ( 'mariadb' === get_db_type() ) {
+		$find_cmd = is_windows() ? 'where mariadb-dump' : '/usr/bin/env which mariadb-dump';
+		$result   = Process::create( $find_cmd, null, null )->run();
+
+		if ( 0 === $result->return_code && '' !== trim( $result->stdout ) ) {
+			$command = 'mariadb-dump';
+		}
+	}
+
+	return $command;
 }
 
 /**
  * Returns the correct `check` command based on the detected database type.
  *
+ * For MariaDB, prefers `mariadb-check` (available since MariaDB 10.5) but falls
+ * back to `mysqlcheck` if the command is not found on the system.
+ *
  * @return string The appropriate check command.
  */
 function get_sql_check_command() {
-	return 'mariadb' === get_db_type() ? 'mariadb-check' : 'mysqlcheck';
+	static $command = null;
+
+	if ( null !== $command ) {
+		return $command;
+	}
+
+	$command = 'mysqlcheck';
+
+	if ( 'mariadb' === get_db_type() ) {
+		$find_cmd = is_windows() ? 'where mariadb-check' : '/usr/bin/env which mariadb-check';
+		$result   = Process::create( $find_cmd, null, null )->run();
+
+		if ( 0 === $result->return_code && '' !== trim( $result->stdout ) ) {
+			$command = 'mariadb-check';
+		}
+	}
+
+	return $command;
 }
 
 /**
@@ -2193,7 +2237,7 @@ function get_sql_modes() {
 	if ( '' === $binary ) {
 		$sql_modes = [];
 	} else {
-		$result = Process::create( "$binary --no-auto-rehash --batch --skip-column-names --execute=\"SELECT @@SESSION.sql_mode\"", null, null )->run();
+		$result = Process::create( escapeshellarg( $binary ) . ' --no-auto-rehash --batch --skip-column-names --execute="SELECT @@SESSION.sql_mode"', null, null )->run();
 
 		if ( 0 !== $result->return_code ) {
 			$sql_modes = [];
