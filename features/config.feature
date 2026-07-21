@@ -209,7 +209,7 @@ Feature: Have a config file
           define( 'WP_POST_REVISIONS', 50 );
       """
 
-    When I run `wp config create --skip-check`
+    When I try `wp core config --skip-check`
     And I run `grep WP_POST_REVISIONS wp-config.php`
     Then STDOUT should not be empty
 
